@@ -100,9 +100,15 @@ does both, and setup handles either without asking:
 **Reading the library is a scrape, because it has to be.** The control protocol
 cannot enumerate content at all — `GET_CONTENT_LIST`, `GET_MOVIE_LIST` and
 `GET_LIBRARY_SIZE` all answer "Invalid request". So the library comes from the
-server's own web UI, is cached to disk, and is enriched with cast, director and
-synopsis from each title's details page. That enrichment is what makes "james
-bond" work: no *title* contains those words, but the synopses do.
+server's own web UI, is cached to disk, and is enriched with cast and synopsis
+from each title's details page.
+
+That enrichment is what makes a search like "james bond" work, and without it the
+failure is loud rather than empty: the scraped table leaves only title, genre and
+director as text, so "james bond" matches seven films on the director's *first
+name* — James Gunn, James Mangold, James Cameron — and answers with Guardians of
+the Galaxy, Terminator and Titanic. No title contains "bond" at all. Enriched,
+the same query finds 17, via synopses that read "James Bond battles…".
 
 **Playing is a single undocumented command** sent to the player on TCP 10000,
 addressed by serial. The connection is opened per command rather than held open,

@@ -17,11 +17,15 @@ qualified with the library prefix (`26-0.0-S_...`). Qualification lives in
 KaleidescapePlayer.qualify().
 
 Cast, genres and synopsis come from the server's per-title /details page
-(async_enrich). They are not needed to PLAY a movie, but without them a search
-has nothing to match beyond titles -- so "james bond", which is not a title and
-is not a field in the library table, would fall back to edit distance and
-return confident nonsense ("Jason Bourne"). Enrichment is one request per title,
-cached to disk, and skipped for titles already done.
+(async_enrich). They are not needed to PLAY a movie, but a search without them is
+worse than useless rather than merely thin. Measured on this library, the scraped
+table leaves only title, genre and director as text -- so "james bond" matches
+seven films on the DIRECTOR'S FIRST NAME (James Gunn, James Mangold, James
+Cameron) and returns Guardians of the Galaxy, Terminator and Titanic, with not
+one Bond film among them. No title contains "bond" at all. Enriched, the same
+query finds 17 via the synopses ("James Bond battles a mad industrialist...").
+Enrichment is one request per title, cached to disk, and skipped for titles
+already done.
 """
 
 from __future__ import annotations

@@ -18,7 +18,7 @@ let a model work it out.
                                    │    a fixed list of phrasings │
                                    └──────────────────────────────┘
  only what you choose to send      ┌──────────────────────────────┐
- — one room, one remote      ───▶  │ B. voice_request service     │
+ — while it's the active source ─▶ │ B. voice_request service     │
                                    │    any wording, no templates │
                                    └──────────────────────────────┘
                                          whichever one │
@@ -62,8 +62,8 @@ answer it. That is why the activity gate exists, and why `play {movie}` — a ba
 wildcard matching any "play …" — must not run ungated next to other media
 players.
 
-**B. The `voice_request` service — for keeping this to one room.** You hand it a
-string:
+**B. The `voice_request` service — for scoping this to one activity.** You hand
+it a string:
 
 ```yaml
 action: kaleidescape_voice.voice_request
@@ -78,8 +78,8 @@ the Kaleidescape is the active source, from a particular remote, from your own
 speech-to-text. Nothing is claimed, so the rest of your voice setup is untouched.
 
 So: A if Assist is your assistant and you want these commands available house-
-wide; B if something else already handles voice and you want the Kaleidescape to
-hear only what you send it.
+wide; B if something else already handles voice, and the Kaleidescape should
+only hear utterances made while it is the activity you are actually on.
 
 Either way the rest is ordinary HA surface — services for playback and search, a
 `media_player` carrying results as a `source_list`, sensors for the library size
@@ -144,7 +144,7 @@ and every Assist entry point understands "play Aladdin". **Set the activity gate
 below**; `play {movie}` is a bare wildcard and must not run ungated next to
 other media players.
 
-**B. Scoped to what you send it** — copy nothing, and call `voice_request` from
+**B. Scoped to one activity** — copy nothing, and call `voice_request` from
 whatever routes your audio. Nothing is claimed, so the gate is optional. That's how the author
 runs it: a remote's voice key routes by activity, and with no source active the
 press is dropped without being transcribed at all.

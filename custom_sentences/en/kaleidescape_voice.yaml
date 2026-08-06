@@ -1,0 +1,310 @@
+language: "en"
+
+# Kaleidescape Voice sentences.
+#
+# These are matched by Home Assistant's BUILT-IN conversation agent, entirely
+# locally -- no LLM, no cloud, single-digit milliseconds. The {movie} slot is a
+# wildcard, so the agent hands whatever was said to the integration, which does
+# the fuzzy match against the scraped library. That means a new movie is
+# playable the moment it appears on the server, with no sentence changes.
+#
+# "on kaleidescape" is optional throughout: when the remote is already on the
+# Kaleidescape activity you just say "play Aladdin".
+
+intents:
+  KaleidescapePlayMovie:
+    data:
+      - sentences:
+          - "play {movie}"
+          - "play {movie} on (kaleidescape|kscape|the theater|the theatre)"
+          - "put on {movie}"
+          - "put {movie} on"
+          - "start {movie}"
+          - "start playing {movie}"
+          - "watch {movie}"
+          - "let's watch {movie}"
+          - "i want to watch {movie}"
+          - "(play|start|watch) the movie {movie}"
+          - "kaleidescape play {movie}"
+
+  # NOTE: deliberately no bare "{action}" sentence. "pause" on its own must keep
+  # meaning "pause whatever HA is playing" -- claiming it here would hijack every
+  # other media player in the house.
+  #
+  # Once you HAVE set the integration's `activity_entity` option, adding
+  # `- "{action}"` here is safe: the handler declines whenever the Kaleidescape
+  # isn't the active source. Don't add it while the gate is unconfigured, since
+  # an unset gate is always open.
+  KaleidescapeTransport:
+    data:
+      - sentences:
+          - "{action} [the] (movie|film)"
+          - "[the] (movie|film) {action}"
+          - "{action} (on|the) (kaleidescape|kscape|the theater|the theatre)"
+          - "kaleidescape {action}"
+
+  # Explicit search. Also what "play <something vague>" falls back to: nothing
+  # plays unless exactly one title matches confidently.
+  KaleidescapeSearch:
+    data:
+      - sentences:
+          - "search [for] {query}"
+          - "search my (library|movies|collection) for {query}"
+          - "find {query}"
+          - "find me {query} [movies]"
+          - "look for {query}"
+          - "show me {query} movies"
+          - "do i have {query}"
+          - "what {query} movies do i have"
+          - "list {query} movies"
+          # "…movies from|in|about X" phrasings. Without these, "show me all my
+          # movies from the marvel universe" matched NO template here and HA's
+          # built-in area intent answered it instead ("no area called show me
+          # all my movies from"), so the request never reached this integration
+          # at all. The leading fillers are optional words rather than part of
+          # {query}; clean_query() in library.py catches whatever still leaks in.
+          - "show me [all] [of] [my] movies (from|in|about|with) {query}"
+          - "show me [all] [of] [my] {query} movies"
+          - "what movies do i have (from|in|about|with) {query}"
+          - "do i have any movies (from|in|about|with) {query}"
+          - "list [all] [of] [my] movies (from|in|about|with) {query}"
+          - "[what|which] movies (from|in|about|with) {query} do i have"
+
+          # Cast phrasings. "what movies do i have with X" already worked; these
+          # are the ways people actually say it.
+          - "movies (with|starring|featuring|by|from) {query}"
+          - "[what|which] movies (star|feature) {query}"
+          - "anything (with|starring|featuring|by|from) {query}"
+
+          # VERBLESS descriptive requests -- the ones the resolver exists for,
+          # and which reached HA's built-in intents instead of this integration:
+          # "the one where the president fights terrorists on a plane" was
+          # answered with "no area called one where", and "something like the
+          # godfather" with "no weather is exposed".
+          #
+          # Every pattern here is anchored on a distinctive lead-in ("the one",
+          # "something", "a … movie") rather than a bare "{query}". That is on
+          # purpose: a matched sentence is CLAIMED, and a claimed sentence whose
+          # gate is shut answers "the Kaleidescape isn't the active source"
+          # instead of falling through to whatever HA would have done. A bare
+          # wildcard would hijack the whole house; these only take phrasings
+          # that were already about films.
+          - "the one (with|where|about|from|by|starring) {query}"
+          - "something (like|with|about|from|by|starring) {query}"
+          - "something {query}"
+          - "a {query} movie"
+          - "an {query} movie"
+          - "a movie (about|with|like|from|by|starring) {query}"
+          - "[a] film (about|with|like|from|by|starring) {query}"
+
+
+  # Follow-up after a search: "play number three".
+  KaleidescapePlayResult:
+    data:
+      - sentences:
+          - "[play] number {index}"
+          - "play [the] {index}"
+          - "play the {index} one"
+          - "[the] {index} one"
+          - "play result {index}"
+
+  KaleidescapeWhatsPlaying:
+    data:
+      - sentences:
+          - "what's playing"
+          - "what is playing"
+          - "what's playing on (kaleidescape|kscape|the theater)"
+          - "what movie is this"
+          - "what are we watching"
+          - "what's on"
+
+  KaleidescapeFind:
+    data:
+      - sentences:
+          - "what {genre} movies do i have"
+          - "what {genre} movies are (in|on) [my] (library|kaleidescape)"
+          - "do i have any {genre} movies"
+          - "show me [my] {genre} movies"
+          # Without the word "movies" -- "show me my comedies", "something
+          # scary". Safe despite looking like a catch-all because {genre} is a
+          # CLOSED list, so these only match actual genre words; "show me my
+          # calendar" cannot reach here. A measured catch-all `{query}` sentence
+          # was tried and swallowed the house: with it, "turn off the office
+          # desk light", "what is the weather" and "is the front door locked"
+          # all became library searches, because HA prefers a matching wildcard
+          # over a more specific built-in intent. Constrain, don't catch-all.
+          - "(show me|list) [all] [of] [my] {genre}"
+          - "what {genre} do i have"
+          - "do i have any {genre}"
+          - "something {genre}"
+          - "[a|an] {genre} (movie|film)"
+      - sentences:
+          - "what movies do i have (by|from) {director}"
+          - "do i have any [movies] (by|from) {director}"
+          - "what did {director} direct"
+      - sentences:
+          - "what movies do i have with {actor}"
+          - "do i have any [movies] with {actor}"
+          - "what's in my library with {actor}"
+      - sentences:
+          - "what {rating} rated movies do i have"
+          - "what movies are rated {rating}"
+      - sentences:
+          - "what movies do i have from {year}"
+
+  KaleidescapeSurprise:
+    data:
+      - sentences:
+          - "surprise me"
+          - "play something"
+          - "play (anything|something random)"
+          - "pick a movie [for me]"
+          - "play a random movie"
+      - sentences:
+          - "play (a|some) random {genre} [movie]"
+          - "surprise me with (a|some) {genre} [movie]"
+          - "pick (a|an) {genre} movie"
+
+lists:
+  # Wildcard: whatever the user said is passed straight to the fuzzy matcher,
+  # so the sentence file never has to know the 202 titles.
+  movie:
+    wildcard: true
+  director:
+    wildcard: true
+  actor:
+    wildcard: true
+  year:
+    wildcard: true
+  query:
+    wildcard: true
+
+  # Ordinals and digits both map to the result number.
+  index:
+    values:
+      - { in: "(1|first)", out: "1" }
+      - { in: "(2|second|two)", out: "2" }
+      - { in: "(3|third|three)", out: "3" }
+      - { in: "(4|fourth|four)", out: "4" }
+      - { in: "(5|fifth|five)", out: "5" }
+      - { in: "(6|sixth|six)", out: "6" }
+      - { in: "(7|seventh|seven)", out: "7" }
+      - { in: "(8|eighth|eight)", out: "8" }
+      - { in: "(9|ninth|nine)", out: "9" }
+      - { in: "(10|tenth|ten)", out: "10" }
+
+  action:
+    values:
+      - in: "(pause|hold)"
+        out: "pause"
+      - in: "(resume|continue|un-pause|unpause)"
+        out: "play"
+      - in: "(stop|quit|exit|end)"
+        out: "stop"
+      - in: "(next|next chapter|skip|skip forward)"
+        out: "next"
+      - in: "(previous|last chapter|go back|back)"
+        out: "previous"
+      - in: "(replay|rewind ten seconds|again)"
+        out: "replay"
+      - in: "(fast forward|scan forward|speed up)"
+        out: "forward"
+      - in: "(rewind|scan back|scan backward)"
+        out: "rewind"
+      - in: "(details|info|information|show details)"
+        out: "details"
+      - in: "(menu|main menu|go to the menu)"
+        out: "menu"
+      - in: "(covers|movie covers|show covers)"
+        out: "covers"
+      - in: "(movie list|show the list|the list)"
+        out: "list"
+      - in: "(subtitles|change subtitles|next subtitles|captions)"
+        out: "subtitles"
+      - in: "(audio|change audio|next audio track|audio track)"
+        out: "audio"
+
+  # Constrained on purpose (not a wildcard): {genre} sentences like
+  # "do i have any {genre} movies" would otherwise claim any noun, and a claimed
+  # sentence whose gate is shut answers "not the active source" rather than
+  # falling through to HA. Anything not in this list still works -- it simply
+  # falls to KaleidescapeSearch, which searches cast/director/synopsis too and
+  # can reach the resolver. That is how "spielberg" and "marvel" are answered.
+  #
+  # `in:` accepts what people SAY, `out:` is what the library filter matches.
+  # Plurals are here because "show me my comedies" is at least as natural as
+  # "show me my comedy movies", and it previously matched nothing at all.
+  # The canonical names mirror the genres the movie server publishes.
+  genre:
+    values:
+      - in: "(action|actions)"
+        out: "action"
+      - in: "(adventure|adventures)"
+        out: "adventure"
+      - in: "(animated|animation|cartoons|cartoon)"
+        out: "animated"
+      - in: "(comedy|comedies|funny)"
+        out: "comedy"
+      - in: "(drama|dramas)"
+        out: "drama"
+      - in: "(fantasy|fantasies)"
+        out: "fantasy"
+      - in: "(horror|horrors|scary)"
+        out: "horror"
+      - in: "(musical|musicals)"
+        out: "musical"
+      - in: "(mystery|mysteries)"
+        out: "mystery"
+      - in: "(romance|romances|romantic)"
+        out: "romance"
+      - in: "(sci-fi|sci fi|science fiction)"
+        out: "sci-fi"
+      - in: "(spy|spies)"
+        out: "spy"
+      - in: "(thriller|thrillers)"
+        out: "thriller"
+      - in: "(war|wars)"
+        out: "war"
+      - in: "(western|westerns)"
+        out: "western"
+      - in: "(biography|biographies|biopic|biopics)"
+        out: "biography"
+      - in: "(children|childrens|kids|kid|family)"
+        out: "children"
+      - in: "(classic|classics)"
+        out: "classics"
+      - in: "(crime|crimes)"
+        out: "crime"
+      - in: "(documentary|documentaries)"
+        out: "documentary"
+      - in: "(epic|epics)"
+        out: "epic"
+      - in: "(historical|history)"
+        out: "history"
+      - in: "(holiday|christmas)"
+        out: "holiday"
+      - in: "(martial arts|kung fu)"
+        out: "martial arts"
+      - in: "(military)"
+        out: "military"
+      - in: "(noir|film noir)"
+        out: "film noir"
+      - in: "(period|period piece|period pieces)"
+        out: "period"
+      - in: "(political|politics)"
+        out: "political"
+      - in: "(satire|satires)"
+        out: "satire"
+      - in: "(suspense|suspenseful)"
+        out: "suspense"
+      - in: "(disaster|disasters)"
+        out: "disaster"
+
+  rating:
+    values:
+      - "G"
+      - "PG"
+      - in: "(pg 13|pg thirteen)"
+        out: "PG-13"
+      - "PG-13"
+      - "R"

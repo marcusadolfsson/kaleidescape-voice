@@ -1,0 +1,93 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Kaleidescape Voice",
+        "description": "Enter the two Kaleidescape components. These are different machines: the player takes playback commands, the server hosts the movie library.",
+        "data": {
+          "player_host": "Player IP (Strato / Alto)",
+          "server_host": "Movie server IP (Terra)"
+        },
+        "data_description": {
+          "player_host": "The player that drives your screen. Control protocol on TCP port 10000.",
+          "server_host": "The server that stores your movies. Its library is read over HTTP."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect_player": "No Kaleidescape player answered on port 10000 at that address. Check the IP, and make sure this is the player and not the movie server.",
+      "cannot_read_library": "Could not read the movie library from that address. Check the IP, and make sure this is the movie server and not the player."
+    },
+    "abort": {
+      "already_configured": "This Kaleidescape system is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Routing and fallback",
+        "description": "Optional. The activity gate lets bare commands like \"pause\" reach the Kaleidescape only while the remote is on the Kaleidescape activity.",
+        "data": {
+          "activity_entity": "Activity entity",
+          "activity_state": "Activity state meaning \"Kaleidescape is active\"",
+          "api_key": "Claude API key (optional)"
+        },
+        "data_description": {
+          "activity_entity": "For example input_select.av_activity.",
+          "activity_state": "The exact state value, for example \"Watch Kaleidescape\".",
+          "api_key": "Enables descriptive requests like \"the one where the president fights terrorists on a plane\". Uses Claude Haiku 4.5 (~$0.013 per query, and only for requests a title match cannot answer). Leave empty to stay fully local."
+        }
+      }
+    }
+  },
+  "services": {
+    "play_movie": {
+      "name": "Play movie",
+      "description": "Play a movie by approximate title or exact handle.",
+      "fields": {
+        "title": {
+          "name": "Title",
+          "description": "Movie title as spoken."
+        },
+        "handle": {
+          "name": "Handle",
+          "description": "Exact content handle."
+        }
+      }
+    },
+    "search": {
+      "name": "Search library",
+      "description": "Search title, cast, director, genres and synopsis; returns the matches.",
+      "fields": {
+        "query": {
+          "name": "Query",
+          "description": "Franchise, actor, genre or partial title."
+        }
+      }
+    },
+    "play_result": {
+      "name": "Play search result",
+      "description": "Play the Nth result of the last search.",
+      "fields": {
+        "index": {
+          "name": "Index",
+          "description": "Position in the last result list, from 1."
+        }
+      }
+    },
+    "refresh_library": {
+      "name": "Refresh library",
+      "description": "Re-scrape the movie server's library."
+    },
+    "send_command": {
+      "name": "Send raw command",
+      "description": "Send a raw control-protocol command to the player.",
+      "fields": {
+        "command": {
+          "name": "Command",
+          "description": "Command and parameters."
+        }
+      }
+    }
+  }
+}

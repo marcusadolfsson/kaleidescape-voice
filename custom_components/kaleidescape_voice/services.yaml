@@ -1,0 +1,91 @@
+play_movie:
+  name: Play movie
+  description: >-
+    Play a movie on the Kaleidescape. Give a spoken/approximate title and it is
+    fuzzy-matched against the library, or give an exact handle to skip matching.
+  fields:
+    title:
+      name: Title
+      description: Movie title as spoken. Does not need to be exact.
+      example: indiana jones crystal skull
+      selector:
+        text:
+    handle:
+      name: Handle
+      description: >-
+        Exact content handle (e.g. 0-S_c449dd9b). Bypasses fuzzy matching.
+        Takes precedence over title.
+      example: 0-S_c449dd9b
+      selector:
+        text:
+
+search:
+  name: Search library
+  description: >-
+    Search the whole library (title, cast, director, genres, synopsis) and
+    return the matches. This is what a vague "play …" falls back to instead of
+    guessing. Results are remembered for play_result and fired on the
+    kaleidescape_voice_search_results event.
+  fields:
+    query:
+      name: Query
+      description: Anything — a franchise, an actor, a genre, a partial title.
+      example: james bond
+      selector:
+        text:
+
+play_result:
+  name: Play search result
+  description: Play the Nth result of the last search (1-based).
+  fields:
+    index:
+      name: Index
+      description: Position in the last result list, starting at 1.
+      example: 3
+      selector:
+        number:
+          min: 1
+          max: 40
+          mode: box
+
+refresh_library:
+  name: Refresh library
+  description: >-
+    Re-scrape the movie server's library. Runs automatically every 12 hours;
+    call this after buying a new movie to make it voice-playable immediately.
+
+send_command:
+  name: Send raw command
+  description: >-
+    Send a raw Kaleidescape control-protocol command to the player, addressed by
+    serial. For diagnostics and for commands this integration does not wrap.
+  fields:
+    command:
+      name: Command
+      description: Command with its parameters; the trailing colon is added if missing.
+      example: GET_PLAY_STATUS
+      selector:
+        text:
+
+voice_request:
+  name: Voice request
+  description: >-
+    Handle a free-form spoken request. A confidently matched title plays
+    immediately; anything vaguer returns the candidates for a screen to show.
+    This is the whole voice path in one call, and it accepts any phrasing --
+    there is no sentence template in front of it.
+  fields:
+    query:
+      name: Query
+      description: Whatever was said, verbatim.
+      required: true
+      example: the one where the president fights terrorists on a plane
+      selector:
+        text:
+    player:
+      name: Player
+      description: Which Kaleidescape player, by name. Omit with only one.
+      required: false
+      example: Living Room
+      selector:
+        text:

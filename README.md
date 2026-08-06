@@ -12,24 +12,84 @@ let a model work it out.
 
 ## How it works
 
-Two jobs, which may live on one machine or two:
+```
+  "play aladdin"                    Home Assistant
+  "the one with the ...."   ─────▶  ┌──────────────────────────────────┐
+                                    │ custom sentences  or             │
+                                    │ voice_request (any phrasing)     │
+                                    └────────────────┬─────────────────┘
+                                                     ▼
+                                    ┌──────────────────────────────────┐
+                                    │ cached library  (~200 titles)    │
+                                    │ fuzzy match, offline, ~1 ms      │
+                                    └────────┬────────────────┬────────┘
+                                    confident │                │ weak
+                                              │                ▼
+                                              │      ┌────────────────────┐
+                                              │      │ Claude Haiku 4.5   │
+                                              │      │ catalog in prompt  │
+                                              │      └─────────┬──────────┘
+                                              ▼                ▼
+                                    ┌──────────────────────────────────┐
+                                    │ play  │  or publish a result list│
+                                    └────────────────┬─────────────────┘
+                                                     ▼
+                                     PLAY_MOVIE over TCP 10000
+```
+
+### The Home Assistant layer
+
+One config entry per system. It owns a cached copy of the library, a client per
+player, and two ways in: HA's built-in conversation agent via the shipped
+sentence file, or the `voice_request` service, which takes any wording and is
+what you call if you'd rather route audio yourself.
+
+Everything else is ordinary HA surface — services for playback and search, a
+`media_player` carrying search results as a `source_list`, sensors for the
+library size and last results, and an event when results change. Nothing here
+needs a cloud account; the config entry's only optional setting is a Claude API
+key.
+
+### Talking to the Kaleidescape
+
+Two jobs, which may live on one machine or two — a player with its own storage
+does both, and setup handles either without asking:
 
 | Job | Port | |
 |---|---|---|
 | **Playback** — a player (Strato, Alto…) | TCP **10000** | Takes playback commands. Serves no useful HTTP. |
 | **The library** — a server (Terra…) | HTTP **80** | Hosts the library. Rejects playback commands. |
 
-A player with its own storage does both. Setup handles either without asking.
+**Reading the library is a scrape, because it has to be.** The control protocol
+cannot enumerate content at all — `GET_CONTENT_LIST`, `GET_MOVIE_LIST` and
+`GET_LIBRARY_SIZE` all answer "Invalid request". So the library comes from the
+server's own web UI, is cached to disk, and is enriched with cast, director and
+synopsis from each title's details page. That enrichment is what makes "james
+bond" work: no *title* contains those words, but the synopses do.
 
-The control protocol **cannot enumerate the library** — `GET_CONTENT_LIST`,
-`GET_MOVIE_LIST` and `GET_LIBRARY_SIZE` all return "Invalid request" — so the
-library is scraped from the server's web UI, cached, and enriched with cast,
-director and synopsis from each title's details page. Without that enrichment
-"james bond" matches nothing: no *title* contains it, but the synopses do.
+**Playing is a single undocumented command** sent to the player on TCP 10000,
+addressed by serial. The connection is opened per command rather than held open,
+and the reply is not believed on its own — this device returns success for
+commands it silently ignores, so playback is confirmed by polling the play
+status afterwards. Details in [docs/play-by-name.md](docs/play-by-name.md).
 
-Naming a title is then a local lookup against a ~200-row table: milliseconds,
-offline, free. "Play Aladdin" never leaves the house. Only requests that a
-string match structurally cannot answer reach a model — see
+### Where Claude comes in
+
+Naming a title never leaves the house. It is a fuzzy match against the cached
+table — milliseconds, offline, free — and "play Aladdin" resolves there.
+
+A model is consulted only when that match comes back **weak**, judged on the best
+local score rather than the number of hits. That distinction matters: counting
+treats one perfect hit and one bad guess alike, so it both wastes calls on
+answers already in hand and skips the queries that most need help. Ten unrelated
+films scoring 0.31 is exactly the case worth asking about.
+
+When it is asked, the whole catalog goes in the prompt and the model returns
+matching films with a confidence score — enough to play something outright, or
+to hand back a list. Leave the API key empty and this path never runs; naming
+titles still works.
+
+That's the interesting part, and it's covered properly in
 [Describing a film you can't name](#describing-a-film-you-cant-name).
 
 ## Install
@@ -235,10 +295,7 @@ manual, whose command vocabulary contains no play-by-handle command at all.
 
 Three quirks each make it fail **silently** — status `000`, no playback: it must
 be addressed by serial with `#`, the trailing `::` is mandatory, and so is the
-options field. Because the device returns `000` for commands it ignores, success
-codes are never trusted: playback is confirmed by **polling** `GET_PLAY_STATUS`,
-not by waiting for events, which a connection that never sent `ENABLE_EVENTS`
-will wait for forever.
+options field. Which is why success codes are never trusted, as above.
 
 Full notes: **[docs/play-by-name.md](docs/play-by-name.md)**. Kaleidescape's own
 reference manual is not redistributed here — ask Kaleidescape. `PLAY_MOVIE`

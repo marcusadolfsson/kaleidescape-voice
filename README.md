@@ -13,12 +13,12 @@ let a model work it out.
 ## How it works
 
 ```
- Assist hears the whole house      ┌──────────────────────────────┐
- and matches "play {movie}"  ───▶  │ A. sentence templates        │
+ everywhere Assist listens         ┌──────────────────────────────┐
+ — satellites, app, dashboard ───▶ │ A. sentence templates        │
                                    │    a fixed list of phrasings │
                                    └──────────────────────────────┘
- You choose what reaches it        ┌──────────────────────────────┐
- and hand it the words       ───▶  │ B. voice_request service     │
+ only what you choose to send      ┌──────────────────────────────┐
+ — one room, one remote      ───▶  │ B. voice_request service     │
                                    │    any wording, no templates │
                                    └──────────────────────────────┘
                                          whichever one │
@@ -46,20 +46,24 @@ let a model work it out.
 There are two ways an utterance can reach the integration, and they differ in
 **who decides that a sentence was about movies**.
 
-**A. Sentence templates.** Copy the shipped
-`custom_sentences/en/kaleidescape_voice.yaml` and HA's built-in conversation
-agent starts recognising `play …`, `find …`, `what … movies do I have` and the
-rest. Assist hears every utterance in the house and this is one more thing it
-knows how to match, so *the templates* decide what belongs to the Kaleidescape.
+**A. Sentence templates — for making this globally available.** If you already
+use Home Assistant Voice, this puts the movie commands everywhere Assist already
+listens: every voice satellite, the companion app, a dashboard. Copy the shipped
+`custom_sentences/en/kaleidescape_voice.yaml` and the built-in agent starts
+recognising `play …`, `find …`, `what … movies do I have` and the rest, from
+anywhere, with no wiring.
 
-That has two consequences worth knowing before you pick it. Phrasing you didn't
-anticipate simply isn't recognised — the templates are a fixed list, not an
-understanding of English. And a template that *does* match has **claimed** the
-utterance: nothing else in HA will answer it, which is why the activity gate
-exists and why `play {movie}`, a bare wildcard matching any "play …", must not
-run ungated next to other media players.
+Assist hears every utterance in the house, so *the templates* are what decide an
+utterance belongs to the Kaleidescape — and that has two consequences worth
+knowing first. Phrasing you didn't anticipate isn't recognised, because the
+templates are a fixed list rather than an understanding of English. And a
+template that *does* match has **claimed** the utterance: nothing else in HA will
+answer it. That is why the activity gate exists, and why `play {movie}` — a bare
+wildcard matching any "play …" — must not run ungated next to other media
+players.
 
-**B. The `voice_request` service.** You hand it a string:
+**B. The `voice_request` service — for keeping this to one room.** You hand it a
+string:
 
 ```yaml
 action: kaleidescape_voice.voice_request
@@ -73,7 +77,10 @@ question. Here *you* decide what reaches it, by choosing when to call it: while
 the Kaleidescape is the active source, from a particular remote, from your own
 speech-to-text. Nothing is claimed, so the rest of your voice setup is untouched.
 
-A is the drop-in. B is the one to use if you already have an assistant you like.
+So: A if Assist is your assistant and you want these commands available house-
+wide; B if something else already handles voice and you want the Kaleidescape to
+hear only what you send it.
+
 Either way the rest is ordinary HA surface — services for playback and search, a
 `media_player` carrying results as a `source_list`, sensors for the library size
 and last results, and an event when results change. Nothing needs a cloud
@@ -131,13 +138,14 @@ That's the interesting part, and it's covered properly in
 Then pick an entry point — the two are described under
 [The Home Assistant layer](#the-home-assistant-layer) above.
 
-**A. Sentence templates** — copy `custom_sentences/en/kaleidescape_voice.yaml`
-into `config/custom_sentences/en/` and Assist understands "play Aladdin".
-**Set the activity gate below**; `play {movie}` is a bare wildcard and must not
-run ungated next to other media players.
+**A. Globally available via Assist** — copy
+`custom_sentences/en/kaleidescape_voice.yaml` into `config/custom_sentences/en/`
+and every Assist entry point understands "play Aladdin". **Set the activity gate
+below**; `play {movie}` is a bare wildcard and must not run ungated next to
+other media players.
 
-**B. `voice_request`** — copy nothing, and call the service from whatever routes
-your audio. Nothing is claimed, so the gate is optional. That's how the author
+**B. Scoped to what you send it** — copy nothing, and call `voice_request` from
+whatever routes your audio. Nothing is claimed, so the gate is optional. That's how the author
 runs it: a remote's voice key routes by activity, and with no source active the
 press is dropped without being transcribed at all.
 

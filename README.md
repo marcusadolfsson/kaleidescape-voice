@@ -82,8 +82,9 @@ wide; B if something else already handles voice, and the Kaleidescape should
 only hear utterances made while it is the activity you are actually on.
 
 Either way the rest is ordinary HA surface — services for playback and search, a
-`media_player` carrying results as a `source_list`, sensors for the library size
-and last results, and an event when results change. Nothing needs a cloud
+`media_player` whose `source_list` *is* the numbered search results (pick one to
+play it), sensors for the library size and last results, and an event fired when
+results change. Nothing needs a cloud
 account; the only optional setting is a Claude API key.
 
 ### Talking to the Kaleidescape
@@ -288,7 +289,7 @@ published for a screen:
 
 | Surface | Use |
 |---|---|
-| `media_player.kaleidescape_voice_search` | `source_list` of numbered results; select one to play it |
+| `media_player.kaleidescape_voice_search` | `source_list` **is** the numbered results; `select_source` plays one. `media_title` carries the query and count (`kubrick (3)`) — useful as a subtitle, and it is how you tell a bad match from a mis-heard one. `off` when there is nothing to show |
 | `sensor.*_search_results` | Numbered results with handles, for dashboards |
 | `kaleidescape_voice_search_results` event | For automations |
 

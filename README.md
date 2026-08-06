@@ -274,13 +274,25 @@ Three conditions, each of which produced a real wrong answer when it was missing
 
 Anything failing these lands in the results list — one tap from playing.
 
-**Cost.** `claude-haiku-4-5`, ~$0.013 per query, 1–6 s, and only vague requests
-reach it. The catalog is grounded in the prompt (~12.7k tokens) rather than
-fine-tuned: a personal library is far too small to train on and would go stale
-the moment you buy a film. Two Haiku-4.5 traps: `output_config.effort` is rejected (an
-Opus/Sonnet parameter — adding it 400s the request), and the prompt-cache
-minimum is 4096 tokens, which a title-only catalog would sit under and silently
-never cache.
+**Cost.** `claude-haiku-4-5`, roughly a cent per query, 1–6 s, and only vague
+requests reach it. The catalog is grounded in the prompt rather than fine-tuned:
+a personal library is far too small to train on and would go stale the moment you
+buy a film.
+
+Each line is `title · year · genres · director · cast · synopsis`, the synopsis
+truncated. **The synopses are about half the prompt and they earn it, but not
+where you'd expect.** Dropping them was measured: identification of well-known
+films is unaffected — Air Force One, Inception, Cars and Home Alone all still
+resolve at the same confidence, because the model knows those films and only
+needs the title to find them in your library. What degrades is *associative*
+asking. "A movie about a shark" went from naming Jaws (correctly, then dropped as
+not-owned) to offering Finding Nemo at 0.30.
+
+So the synopses buy you the queries that are about theme rather than identity.
+If your library is large enough for prompt size to matter, that is the trade.
+
+One Haiku-4.5 trap worth knowing: `output_config.effort` is rejected — it is an
+Opus/Sonnet parameter, and adding it "for quality" 400s the request.
 
 ## Results, and where they go
 

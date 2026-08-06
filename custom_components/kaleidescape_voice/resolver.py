@@ -55,9 +55,9 @@ task. Two Haiku-4.5-specific constraints are load-bearing here:
 * **`output_config.effort` is rejected on Haiku 4.5** -- it is an Opus/Sonnet
   parameter. Don't add it "for quality"; the request will 400.
 * **The prompt-cache minimum is 4096 tokens on Haiku 4.5** (higher than the
-  newer models). A title-only catalog lands near that and would silently never
-  cache. Including synopses both makes descriptive queries work *and* pushes the
-  prefix clear of the minimum.
+  newer models). Only a title-ONLY catalog would sit under it -- measured, the
+  catalog without synopses is still ~6.9k tokens, so caching is not the reason
+  synopses are here.
 
 Caching is requested but not relied on: home voice queries arrive minutes or
 hours apart and the default TTL is 5 minutes, so most calls pay full price
@@ -275,6 +275,14 @@ class ClaudeResolver:
 
         Synopses are truncated: they carry most of the descriptive signal but
         would otherwise dominate the prompt.
+
+        They are ~half the prompt and worth it, though not for the obvious
+        reason. Measured by dropping them: identifying a well-known film is
+        unaffected (Air Force One, Inception, Cars, Home Alone all resolve at the
+        same confidence -- the model knows those films and needs only the title
+        to locate them here). What degrades is ASSOCIATIVE asking: "a movie about
+        a shark" went from naming Jaws to offering Finding Nemo at 0.30. Cut them
+        if prompt size ever matters more than thematic queries do.
         """
         lines = []
         for movie in movies:

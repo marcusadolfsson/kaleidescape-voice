@@ -8,7 +8,7 @@ Two halves:
   the only way to start an arbitrary title without driving the on-screen UI.
 
 Everything the protocol does that will surprise you is documented in
-`docs/play-by-name.md`.
+`claude-memory/reference_kaleidescape_play_by_name.md`.
 """
 
 from __future__ import annotations
@@ -250,6 +250,29 @@ class KaleidescapeVoiceRuntime:
                     len(matches),
                 )
                 return [], []
+
+        elif top < LOCAL_CONFIDENT_SCORE and matches:
+            # Same judgement, no resolver to appeal to. Local search has already
+            # said these are weak, and weak local hits are not merely thin --
+            # they are confidently wrong. Unenriched, "james bond" returns seven
+            # films matched on a DIRECTOR'S FIRST NAME (James Gunn, James
+            # Mangold, James Cameron): Guardians of the Galaxy, Terminator,
+            # Titanic, and not one Bond film.
+            #
+            # With a key those are replaced by the resolver's answer. Without
+            # one, serving them anyway would make "no API key" mean "answers get
+            # worse" rather than "descriptive requests are unavailable" -- so
+            # they are dropped here too. Everywhere else this integration prefers
+            # nothing over a wrong answer; this is the one place that didn't.
+            _LOGGER.debug(
+                "best local score %.2f for %r is below %.2f and no resolver is "
+                "configured; dropping %d weak hit(s)",
+                top,
+                query,
+                LOCAL_CONFIDENT_SCORE,
+                len(matches),
+            )
+            return [], []
 
         # Local hits carry scores, so year-sort within relevance tiers rather
         # than across them -- see rank_matches().

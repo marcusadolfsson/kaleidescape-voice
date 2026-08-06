@@ -224,7 +224,12 @@ search for it, because their director is James **Gunn**.
 Local search matches literal strings, so it cannot answer "the one where the
 president fights terrorists on a plane" — no field contains those words. Set a
 **Claude API key** in options and those requests go to a model holding your whole
-library in its prompt. Leave it empty and everything stays local.
+library in its prompt.
+
+Leave it empty and everything stays local — naming a title still works exactly as
+before. What you lose is answers, not accuracy: a request local search can't
+answer weakly comes back empty rather than being padded out with its best
+guesses, because those guesses are confidently wrong rather than merely thin.
 
 | Request | Outcome |
 |---|---|

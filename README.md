@@ -11,12 +11,17 @@ Say a movie name, the theater plays it.
 
 ## How it works
 
-Two halves, because the Kaleidescape splits the job across two machines:
+Two jobs, which may or may not live on the same machine:
 
-| | Machine | Role here |
+| Job | Port | Notes |
 |---|---|---|
-| **Player** (Strato/Alto) | TCP **10000** | Takes playback commands. Serves no useful HTTP. |
-| **Server** (Terra) | HTTP **80** | Hosts the library. Rejects playback commands. |
+| **Playback** — a player (Strato, Alto…) | TCP **10000** | Takes playback commands. Serves no useful HTTP. |
+| **The library** — a movie server (Terra…) | HTTP **80** | Hosts the library. Rejects playback commands. |
+
+On a system with a separate server these are two boxes with two addresses. On a
+player with its own storage they are **one box doing both**, and plenty of
+systems are built that way. Setup handles either without asking you which you
+have — see below.
 
 The control protocol **cannot enumerate the library** — `GET_CONTENT_LIST`,
 `GET_MOVIE_LIST`, `GET_LIBRARY_SIZE` all return "Invalid request". So the
@@ -24,9 +29,53 @@ library is scraped from the server's own web UI (`/movies?collection=All`) and
 cached, then a spoken phrase is fuzzy-matched against it and the resulting
 handle is played on the player.
 
-Matching is local and instant — no LLM is involved in playing a named movie.
-It is a lookup against a ~200-row table; a sentence match resolves it in
-milliseconds, offline. See "Where an LLM actually helps" below.
+Matching a **named** title is local and instant — no LLM involved. It is a
+lookup against a ~200-row table, resolved in milliseconds, offline and free.
+"Play Aladdin" should never cost a network round trip.
+
+### The interesting half: asking for a film you can't name
+
+The part worth stealing is what happens when you *can't* remember the title.
+Local search matches literal strings in scraped metadata, so it structurally
+cannot answer "the one where the president fights terrorists on a plane" — no
+field contains those words. A model that knows what these films *are* can, and
+it is given the whole library in the prompt:
+
+```
+"the one where the president fights terrorists on a plane"  → Air Force One      plays
+"a heist movie set in dreams"                               → Inception          plays
+"the one where the boy is left home alone"                  → Home Alone 1 and 2 asks
+"the one with the shark"                                    → Jaws, not owned    declines
+```
+
+Three ideas do most of the work, and they generalise well beyond Kaleidescape:
+
+**Ask the model how sure it is, and act on the number.** Every match carries a
+calibrated `confidence`. Measured against a real 202-title library the two
+populations barely touch — genuine identifications land at 0.95–1.00, while
+"I'm offering you the nearest thing I have" lands at 0.25–0.45. That gap is
+wide enough to hold a decision: above 0.90 the film starts playing on its own.
+
+**Make the model name things semantically, never by identifier.** The obvious
+design has it return the library's own handle. It doesn't work, and the reason
+is worth knowing: every handle here shares the prefix `0-S_c4`, only 43 distinct
+8-character prefixes exist across 202 titles, and the median handle differs from
+its nearest neighbour by four characters. Copying one is a *transcription* task —
+the thing LLMs are worst at — while identifying the film is reasoning, which they
+are good at. It failed exactly that way, returning a handle for *Cars* while
+plainly meaning *Air Force One*. And because a near-miss is another real handle,
+"does this exist?" cannot catch it. So films are identified by **(title, year)**,
+which is unique, semantic, and independently verifiable against the library.
+
+**Distinguish "I found nothing" from "I couldn't ask".** An empty answer from
+the model means the library genuinely has nothing, and weak local guesses are
+then suppressed — asking for *Jaws* returns nothing rather than nine unrelated
+films. A failed API call means no opinion was formed, so local results stand. Fold
+those two into one value and a network blip starts reporting an empty library.
+
+Full detail, including the auto-play rules, is in
+[Descriptive requests](#descriptive-requests-claude-haiku-45) below. Leave the
+API key empty and none of this runs; everything else still works.
 
 ## Install
 
@@ -36,20 +85,72 @@ milliseconds, offline. See "Where an LLM actually helps" below.
 **Manually**: copy `custom_components/kaleidescape_voice/` into your
 `config/custom_components/` and restart.
 
-For the spoken phrases, also copy `custom_sentences/en/kaleidescape_voice.yaml`
-into `config/custom_sentences/en/`. The integration works without it — the
-services and the `voice_request` entry point do not need sentence templates —
-but Assist will not understand "play Aladdin" until it is in place.
+### Two ways to run it, and the choice matters
+
+There are two entry points, and which one you use decides how much of your
+house's vocabulary this integration lays claim to.
+
+**Sharing Assist with everything else.** Copy
+`custom_sentences/en/kaleidescape_voice.yaml` into `config/custom_sentences/en/`
+and Assist starts understanding "play Aladdin". This is the drop-in option, and
+the one to pick if Assist is already your assistant.
+
+The cost is ambiguity: `play {movie}` is a bare wildcard, so it matches *any*
+"play …" — including "play some jazz". **Set the activity gate** (next section)
+and it only claims those while the Kaleidescape is the active source. Do not run
+it ungated in a house with other media players.
+
+Be aware of what a matched sentence means: it is **claimed**. If the gate is shut
+the reply is "the Kaleidescape isn't the active source" rather than falling
+through to whatever else might have answered. That is why the shipped templates
+are anchored on distinctive lead-ins and a closed genre list rather than broad
+wildcards — a catch-all `{query}` sentence was tried during development and
+swallowed the house, because Home Assistant prefers a matching wildcard over a
+more specific built-in intent. With it live, "turn off the office light" and
+"what is the weather" both became library searches.
+
+**Bound to the source, alongside another assistant.** Skip the sentence file
+entirely and call the service directly:
+
+```yaml
+action: kaleidescape_voice.voice_request
+data:
+  query: "{{ whatever_was_said }}"
+```
+
+`voice_request` takes **any phrasing** — there is no sentence template in front
+of it — and decides for itself whether to play or offer a list. Route audio to it
+only while the Kaleidescape is the active source, and this integration never sees
+an utterance meant for anything else. Nothing is claimed, nothing is ambiguous,
+and your existing assistant keeps the whole house.
+
+That is how the author runs it: a remote's voice key routes by activity — one
+source to Siri, Kaleidescape to `voice_request`, and neither active means the
+press is dropped without being transcribed at all.
 
 ## Setup
 
 Settings → Devices & Services → **Add Integration** → *Kaleidescape Voice*.
 
-Enter the **player IP** and the **movie server IP**. Both are validated for real
-before the entry is created: the player must answer `GET_DEVICE_INFO` on port
-10000 and the server must return a parseable library. Swapping the two fields is
-the easy mistake and it produces a system that looks configured and cannot play
-anything, so the flow refuses it.
+**Enter one address — any component of the system.** The rest is discovered.
+
+That works because the control protocol routes by device: connect to any
+component's port 10000, address a command to another device with `#<serial>/`,
+and it is forwarded. So `GET_AVAILABLE_DEVICES_BY_SERIAL_NUMBER` enumerates the
+whole system from a single connection.
+
+Each device is then classified by whether it has any **movie zones** — a player
+has at least one, a server reports none. That is the distinction that matters,
+rather than the model name, which changes with every product generation. The
+library is read from a device with no movie zones; if there isn't one, the
+system is a single box and the address you entered is used for both.
+
+Players are named from the friendly name already set in the Kaleidescape app, so
+targeting ("play it in the living room") uses a name you chose rather than one
+invented during setup.
+
+The library is fetched for real before the entry is created, so a wrong address
+fails at setup rather than the first time someone speaks.
 
 ### Set the activity gate
 
@@ -85,16 +186,21 @@ If a phrase doesn't resolve to exactly one title, **nothing plays** — the
 library is searched and the candidates come back instead:
 
 ```
-"play james bond"  ->  "I found 27 matching james bond. The first 5 are:
-                        1. A View to a Kill, 2. Die Another Day,
-                        3. From Russia with Love, 4. Licence to Kill,
-                        5. No Time to Die. Say a number to play one."
-"play number 3"    ->  "Playing From Russia with Love."
+"play james bond"  ->  "I found 17 matching james bond. The first 5 are:
+                        1. No Time to Die, 2. Die Another Day,
+                        3. Tomorrow Never Dies, 4. Licence to Kill,
+                        5. A View to a Kill. Say a number to play one."
+"play number 3"    ->  "Playing Tomorrow Never Dies."
 ```
 
 This is the whole point of the confidence rule. "james bond" is not a title, it
-matches 27 films, and picking one is a coin flip the user has to undo. Same for
-`spy` (30 results) and `sean connery` (10).
+matches 17 films, and picking one is a coin flip the user has to undo. Same for
+`spy` (30 results) and `sean connery` (7).
+
+Results are ordered **newest first within a relevance tier** — not by year
+alone. Plain year ordering is right when the hits are peers, and wrong the moment
+one is decisively better: searching "top gun" put three newer, weakly-matching
+films above *Top Gun* itself, because their director is James **Gunn**.
 
 Search covers **title, cast, director, genres and synopsis** — which is why
 "james bond" works at all: no title contains it, but the Bond synopses do
@@ -159,6 +265,7 @@ house. Route bare transport words with the activity gate instead.
 
 | Service | Purpose |
 |---|---|
+| `kaleidescape_voice.voice_request` | `query:` — **the whole voice path in one call.** Takes any phrasing, plays it or returns the candidates. Use this to run alongside another assistant |
 | `kaleidescape_voice.play_movie` | `title:` (fuzzy) or `handle:` (exact) |
 | `kaleidescape_voice.search` | `query:` — returns matches; what a vague play falls back to |
 | `kaleidescape_voice.play_result` | `index:` — play the Nth result of the last search |
@@ -197,18 +304,45 @@ Two Haiku-4.5 constraints are load-bearing and easy to trip:
   models). A title-only catalog lands near it and would silently never cache;
   including synopses both makes descriptive queries work *and* clears the floor.
 
-### Two rules that make it safe
+### What has to be true before anything plays
 
-1. **The model returns handles, never titles.** A hallucinated title is
-   plausible and hard to spot; a hallucinated handle just isn't in the library
-   and is dropped (and logged).
-2. **It can never auto-play.** Only a confident *local* title match plays
-   directly. Resolver output is always a list you tap, so the worst case is a
-   suggestion you ignore.
+The model can start a film without you tapping anything, so three independent
+conditions have to hold. Each exists because removing it produced a real wrong
+answer during development.
 
-That second rule matters because Haiku sometimes stretches: "the one with the
-shark" returns *Jurassic Park* when *Jaws* isn't in the library, rather than
-declining. Since nothing plays without a tap, that costs a glance.
+**1. The film must be identified semantically.** Matches come back as
+`(title, year)` and are looked up in the library. An invented film simply isn't
+there, so the failure is "no match" rather than a different movie. Title alone
+is not enough — libraries contain *Beauty and the Beast* (1991 **and** 2017) and
+*The Lion King* (1994 **and** 2019) — hence the year. Where a title is unique
+the year is only a checksum and a mismatch is logged and ignored; where it is a
+duplicate the year is the only discriminator, so one matching neither is dropped
+rather than guessed.
+
+**2. Confidence must be high, and the candidate must be alone.** ≥0.90 to play,
+and exactly one candidate scoring ≥0.50. Both halves matter:
+
+- "the one with the shark" scores *Jurassic Park* at 0.45 when *Jaws* isn't
+  owned — the model knows it is offering a substitute and says so. It lists.
+- "the one where the boy is left home alone" returns *Home Alone* at 0.95 **and**
+  *Home Alone 2* at 0.85. The first clears any threshold, but both genuinely fit
+  what was asked, so choosing one is a coin flip you have to undo. It lists.
+  Adding "in New York" collapses it to one match, and that plays.
+
+**3. You must have asked for playback.** Confidence is not intent. These resolve
+to the same film with the same certainty:
+
+```
+"watch the one where the boy is left home alone in new york"  → plays
+"which movie is a child left alone in new york city"          → lists
+```
+
+Only the first is asking for it to start. Answering the second by playing it is
+obnoxious even though the match is right, so the phrasing is classified before
+the leading verb is stripped — stripping is what destroys the evidence.
+
+Anything that fails these lands in the results list instead, which is a tap away
+from playing and costs a glance.
 
 ## The protocol, and why the code looks paranoid
 

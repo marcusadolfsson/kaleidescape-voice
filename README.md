@@ -24,7 +24,7 @@ let a model work it out.
                                          whichever one │
                                                        ▼
                      ┌──────────────────────────────────────────────────┐
-                     │  cached library (~200 titles)                    │
+                     │  cached library                                  │
                      │  fuzzy match — offline, ~1 ms, no network        │
                      └───────────┬─────────────────────────┬────────────┘
                        confident │                         │ weak
@@ -43,8 +43,7 @@ let a model work it out.
 
 ### The Home Assistant layer
 
-One config entry per system, owning a cached copy of the library and a client
-per player. There are two ways an utterance can reach it, and they differ in
+There are two ways an utterance can reach the integration, and they differ in
 **who decides that a sentence was about movies**.
 
 **A. Sentence templates.** Copy the shipped
@@ -222,14 +221,16 @@ library in its prompt. Leave it empty and everything stays local.
 Three ideas do the work, and they generalise past this hardware.
 
 **Ask for confidence and act on the number.** Each match carries a calibrated
-`confidence`. Measured on a real 202-title library the populations barely touch:
+`confidence`. Measured against the library this was built on, the two
+populations barely touch:
 genuine identifications land at 0.95–1.00, "here's the nearest thing I have" at
 0.25–0.45. Wide enough to hold a decision.
 
 **Identify semantically, never by identifier.** The obvious design returns the
 library's own handle, and it doesn't work: every handle here shares the prefix
-`0-S_c4`, only 43 distinct 8-character prefixes exist across 202 titles, and the
-median handle differs from its nearest neighbour by four characters. Copying one
+`0-S_c4`, only 43 distinct 8-character prefixes existed across the whole library
+measured, and the median handle differed from its nearest neighbour by four
+characters. Copying one
 is *transcription* — what models are worst at — while identifying the film is
 reasoning, which they're good at. It failed exactly that way, returning the
 handle for *Cars* while plainly meaning *Air Force One*, and since a near-miss is
@@ -266,15 +267,15 @@ Anything failing these lands in the results list — one tap from playing.
 
 **Cost.** `claude-haiku-4-5`, ~$0.013 per query, 1–6 s, and only vague requests
 reach it. The catalog is grounded in the prompt (~12.7k tokens) rather than
-fine-tuned: 202 titles is far too small to train on and would go stale the moment
-you buy a film. Two Haiku-4.5 traps: `output_config.effort` is rejected (an
+fine-tuned: a personal library is far too small to train on and would go stale
+the moment you buy a film. Two Haiku-4.5 traps: `output_config.effort` is rejected (an
 Opus/Sonnet parameter — adding it 400s the request), and the prompt-cache
 minimum is 4096 tokens, which a title-only catalog would sit under and silently
 never cache.
 
 ## Results, and where they go
 
-Reading seventeen Bond titles aloud isn't a usable answer, so results are
+Reading a long list of matches aloud isn't a usable answer, so results are
 published for a screen:
 
 | Surface | Use |

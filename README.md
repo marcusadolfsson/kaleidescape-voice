@@ -13,42 +13,72 @@ let a model work it out.
 ## How it works
 
 ```
-  "play aladdin"                    Home Assistant
-  "the one with the ...."   ─────▶  ┌──────────────────────────────────┐
-                                    │ custom sentences  or             │
-                                    │ voice_request (any phrasing)     │
-                                    └────────────────┬─────────────────┘
-                                                     ▼
-                                    ┌──────────────────────────────────┐
-                                    │ cached library  (~200 titles)    │
-                                    │ fuzzy match, offline, ~1 ms      │
-                                    └────────┬────────────────┬────────┘
-                                    confident │                │ weak
-                                              │                ▼
-                                              │      ┌────────────────────┐
-                                              │      │ Claude Haiku 4.5   │
-                                              │      │ catalog in prompt  │
-                                              │      └─────────┬──────────┘
-                                              ▼                ▼
-                                    ┌──────────────────────────────────┐
-                                    │ play  │  or publish a result list│
-                                    └────────────────┬─────────────────┘
-                                                     ▼
-                                     PLAY_MOVIE over TCP 10000
+ Assist hears the whole house      ┌──────────────────────────────┐
+ and matches "play {movie}"  ───▶  │ A. sentence templates        │
+                                   │    a fixed list of phrasings │
+                                   └──────────────────────────────┘
+ You choose what reaches it        ┌──────────────────────────────┐
+ and hand it the words       ───▶  │ B. voice_request service     │
+                                   │    any wording, no templates │
+                                   └──────────────────────────────┘
+                                         whichever one │
+                                                       ▼
+                     ┌──────────────────────────────────────────────────┐
+                     │  cached library (~200 titles)                    │
+                     │  fuzzy match — offline, ~1 ms, no network        │
+                     └───────────┬─────────────────────────┬────────────┘
+                       confident │                         │ weak
+                                 │                         ▼
+                                 │        ┌──────────────────────────────┐
+                                 │        │  Claude Haiku 4.5            │
+                                 │        │  whole catalog in the prompt │
+                                 │        └───────────────┬──────────────┘
+                                 ▼                        ▼
+                     ┌──────────────────────────────────────────────────┐
+                     │  play it        or        publish a result list  │
+                     └───────────────────────┬──────────────────────────┘
+                                             ▼
+                                PLAY_MOVIE  ─────▶  player, TCP 10000
 ```
 
 ### The Home Assistant layer
 
-One config entry per system. It owns a cached copy of the library, a client per
-player, and two ways in: HA's built-in conversation agent via the shipped
-sentence file, or the `voice_request` service, which takes any wording and is
-what you call if you'd rather route audio yourself.
+One config entry per system, owning a cached copy of the library and a client
+per player. There are two ways an utterance can reach it, and they differ in
+**who decides that a sentence was about movies**.
 
-Everything else is ordinary HA surface — services for playback and search, a
-`media_player` carrying search results as a `source_list`, sensors for the
-library size and last results, and an event when results change. Nothing here
-needs a cloud account; the config entry's only optional setting is a Claude API
-key.
+**A. Sentence templates.** Copy the shipped
+`custom_sentences/en/kaleidescape_voice.yaml` and HA's built-in conversation
+agent starts recognising `play …`, `find …`, `what … movies do I have` and the
+rest. Assist hears every utterance in the house and this is one more thing it
+knows how to match, so *the templates* decide what belongs to the Kaleidescape.
+
+That has two consequences worth knowing before you pick it. Phrasing you didn't
+anticipate simply isn't recognised — the templates are a fixed list, not an
+understanding of English. And a template that *does* match has **claimed** the
+utterance: nothing else in HA will answer it, which is why the activity gate
+exists and why `play {movie}`, a bare wildcard matching any "play …", must not
+run ungated next to other media players.
+
+**B. The `voice_request` service.** You hand it a string:
+
+```yaml
+action: kaleidescape_voice.voice_request
+data:
+  query: "the one where the president fights terrorists on a plane"
+```
+
+No templates are involved and no phrasing is privileged — it takes the words as
+spoken and works out for itself whether they name a film, describe one, or ask a
+question. Here *you* decide what reaches it, by choosing when to call it: while
+the Kaleidescape is the active source, from a particular remote, from your own
+speech-to-text. Nothing is claimed, so the rest of your voice setup is untouched.
+
+A is the drop-in. B is the one to use if you already have an assistant you like.
+Either way the rest is ordinary HA surface — services for playback and search, a
+`media_player` carrying results as a `source_list`, sensors for the library size
+and last results, and an event when results change. Nothing needs a cloud
+account; the only optional setting is a Claude API key.
 
 ### Talking to the Kaleidescape
 
@@ -99,33 +129,18 @@ That's the interesting part, and it's covered properly in
 **Manually**: copy `custom_components/kaleidescape_voice/` into
 `config/custom_components/` and restart.
 
-Then pick how it should listen — the choice decides how much of your house's
-vocabulary this claims.
+Then pick an entry point — the two are described under
+[The Home Assistant layer](#the-home-assistant-layer) above.
 
-**A. Share Assist.** Copy `custom_sentences/en/kaleidescape_voice.yaml` into
-`config/custom_sentences/en/` and Assist understands "play Aladdin". Drop-in,
-and right if Assist is already your assistant.
+**A. Sentence templates** — copy `custom_sentences/en/kaleidescape_voice.yaml`
+into `config/custom_sentences/en/` and Assist understands "play Aladdin".
+**Set the activity gate below**; `play {movie}` is a bare wildcard and must not
+run ungated next to other media players.
 
-The catch: `play {movie}` is a bare wildcard, so it matches *any* "play …",
-including "play some jazz". **Set the activity gate below** — don't run it
-ungated in a house with other media players. And note that a matched sentence is
-*claimed*: with the gate shut you get "the Kaleidescape isn't the active source"
-rather than a fall-through to whatever else might have answered.
-
-**B. Bind it to the source.** Skip the sentence file and call the service:
-
-```yaml
-action: kaleidescape_voice.voice_request
-data:
-  query: "{{ whatever_was_said }}"
-```
-
-`voice_request` takes **any phrasing** — no sentence template in front of it —
-and decides itself whether to play or offer a list. Route audio to it only while
-the Kaleidescape is active and it never sees an utterance meant for anything
-else, so your existing assistant keeps the whole house. That's how the author
+**B. `voice_request`** — copy nothing, and call the service from whatever routes
+your audio. Nothing is claimed, so the gate is optional. That's how the author
 runs it: a remote's voice key routes by activity, and with no source active the
-press is dropped without being transcribed.
+press is dropped without being transcribed at all.
 
 ## Setup
 
